@@ -50,6 +50,18 @@ func main() {
 		os.Exit(1)
 	}
 
+	if stackMode {
+		fmt.Fprint(os.Stderr, "generating terragrunt stack...\n")
+		gen := exec.Command(*binary, "stack", "generate")
+		gen.Dir = *workdir
+		gen.Stderr = os.Stderr
+		if err := gen.Run(); err != nil {
+			fmt.Fprintf(os.Stderr, "terragrunt stack generate failed: %v\n", err)
+			os.Exit(1)
+		}
+		*workdir = filepath.Join(*workdir, ".terragrunt-stack")
+	}
+
 	log.Info("starting tfui", "binary", *binary, "workdir", *workdir)
 
 	runner := terraform.NewTerraformRunner(*workdir, *binary)

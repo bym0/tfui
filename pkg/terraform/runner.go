@@ -40,7 +40,7 @@ func (tr *TerraformRunner) stackPrefix(args []string) []string {
 	if !tr.stackMode {
 		return args
 	}
-	return append([]string{"stack", "run"}, args...)
+	return append([]string{"run-all"}, args...)
 }
 
 func (tr *TerraformRunner) Plan(ctx context.Context, targets []string) <-chan StreamEvent {
