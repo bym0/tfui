@@ -69,7 +69,7 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 		}
 		defer os.RemoveAll(tmpDir)
 
-		args := []string{"stack", "run", "plan", "--terragrunt-non-interactive", "--json-out-dir", tmpDir}
+		args := []string{"stack", "run", "plan", "--json-out-dir", tmpDir}
 		for _, t := range targets {
 			args = append(args, fmt.Sprintf("-target=%s", t))
 		}
