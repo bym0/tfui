@@ -139,7 +139,11 @@ func (m Model) renderInfoBar() string {
 		info = " Scanning..."
 	case workPlan:
 		adornment = infoBarStyle.Render(m.spinner.View())
-		info = fmt.Sprintf(" Scanning... (%d/%d resources scanned)", m.scannedResourcesCount(), len(m.resources))
+		if m.statusText != "" {
+			info = " " + m.statusText
+		} else {
+			info = fmt.Sprintf(" Scanning... (%d/%d resources scanned)", m.scannedResourcesCount(), len(m.resources))
+		}
 	default:
 		adornment = lipgloss.NewStyle().Foreground(colorGreen).Render("✓")
 		info = fmt.Sprintf("  Scan Complete (%d resources scanned)", len(m.resources))

@@ -75,6 +75,11 @@ func (m Model) handleStreamEvent(event terraform.StreamEvent) (tea.Model, tea.Cm
 		return m, waitForEvent(m.eventCh)
 	}
 
+	if event.Message != "" {
+		m.statusText = event.Message
+		return m, waitForEvent(m.eventCh)
+	}
+
 	if event.Diagnostic != nil {
 		m.diagnostics = append(m.diagnostics, *event.Diagnostic)
 		return m, waitForEvent(m.eventCh)

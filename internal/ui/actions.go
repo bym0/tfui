@@ -93,6 +93,7 @@ func (m Model) startRescan() (tea.Model, tea.Cmd) {
 	m.offset = 0
 	m.err = nil
 	m.diagnostics = nil
+	m.statusText = ""
 	m.workState = workStatePull
 	m.outputLines = nil
 	m.outputCh = nil

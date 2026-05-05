@@ -35,6 +35,7 @@ type Model struct {
 	hideUnchanged bool
 
 	workState   workState
+	statusText  string
 	spinner     spinner.Model
 	err         error
 	diagnostics []terraform.Diagnostic

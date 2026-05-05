@@ -80,12 +80,30 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 			return cmd.Process.Signal(os.Interrupt)
 		}
 
-		var stderr strings.Builder
-		cmd.Stderr = &stderr
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to pipe stderr: %w", err)}
+			return
+		}
 
-		cmdErr := cmd.Run()
+		if err := cmd.Start(); err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed to start: %w", err)}
+			return
+		}
+
+		var lastStderr string
+		scanner := bufio.NewScanner(stderrPipe)
+		for scanner.Scan() {
+			line := strings.TrimSpace(scanner.Text())
+			if line != "" {
+				lastStderr = line
+				ch <- StreamEvent{Message: line}
+			}
+		}
+
+		cmdErr := cmd.Wait()
 		if cmdErr != nil {
-			log.Debug("terragrunt stack run plan", "exit_error", cmdErr, "stderr", stderr.String())
+			log.Debug("terragrunt stack run plan", "exit_error", cmdErr)
 		}
 
 		events, err := parsePlanDir(tmpDir)
@@ -95,7 +113,7 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 		}
 
 		if len(events) == 0 && cmdErr != nil {
-			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w\n%s", cmdErr, stderr.String())}
+			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w\n%s", cmdErr, lastStderr)}
 			return
 		}
 

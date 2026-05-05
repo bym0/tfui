@@ -25,7 +25,9 @@ type ResourceChange struct {
 }
 
 type ChangeDetail struct {
-	Actions []string `json:"actions"`
+	Actions []string        `json:"actions"`
+	Before  json.RawMessage `json:"before"`
+	After   json.RawMessage `json:"after"`
 }
 
 func planActionsToAction(actions []string) Action {
@@ -61,6 +63,11 @@ func (rc *ResourceChange) toResource() Resource {
 		impliedProvider = impliedProvider[:under]
 	}
 
+	attrs := rc.Change.After
+	if len(attrs) == 0 || string(attrs) == "null" {
+		attrs = rc.Change.Before
+	}
+
 	return Resource{
 		Address:         addr,
 		Module:          rc.ModuleAddress,
@@ -70,6 +77,7 @@ func (rc *ResourceChange) toResource() Resource {
 		ResourceKey:     rc.Index,
 		ImpliedProvider: impliedProvider,
 		Action:          planActionsToAction(rc.Change.Actions),
+		Attributes:      attrs,
 	}
 }
 
