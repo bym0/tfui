@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"charm.land/log/v2"
 )
 
 const MB = 1024 * 1024
@@ -67,7 +69,7 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 		}
 		defer os.RemoveAll(tmpDir)
 
-		args := []string{"stack", "run", "plan", "--json-out-dir", tmpDir}
+		args := []string{"stack", "run", "plan", "--terragrunt-non-interactive", "--json-out-dir", tmpDir}
 		for _, t := range targets {
 			args = append(args, fmt.Sprintf("-target=%s", t))
 		}
@@ -78,14 +80,22 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 			return cmd.Process.Signal(os.Interrupt)
 		}
 
-		if err := cmd.Run(); err != nil {
-			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w", err)}
-			return
+		var stderr strings.Builder
+		cmd.Stderr = &stderr
+
+		cmdErr := cmd.Run()
+		if cmdErr != nil {
+			log.Debug("terragrunt stack run plan", "exit_error", cmdErr, "stderr", stderr.String())
 		}
 
 		events, err := parsePlanDir(tmpDir)
 		if err != nil {
 			ch <- StreamEvent{Error: fmt.Errorf("failed to parse plan output: %w", err)}
+			return
+		}
+
+		if len(events) == 0 && cmdErr != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w\n%s", cmdErr, stderr.String())}
 			return
 		}
 
