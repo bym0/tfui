@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/log/v2"
@@ -21,11 +22,6 @@ func main() {
 	closeLog := setUpLogging()
 	defer closeLog()
 
-	if _, err := exec.LookPath(*binary); err != nil {
-		fmt.Fprintf(os.Stderr, "%q not found in PATH\n", *binary)
-		os.Exit(1)
-	}
-
 	if *workdir == "" {
 		wd, err := os.Getwd()
 		if err != nil {
@@ -33,6 +29,22 @@ func main() {
 			os.Exit(1)
 		}
 		*workdir = wd
+	}
+
+	binarySet := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "binary" {
+			binarySet = true
+		}
+	})
+	if !binarySet && isTerragruntProject(*workdir) {
+		*binary = "terragrunt"
+		log.Info("detected terragrunt project, using terragrunt binary")
+	}
+
+	if _, err := exec.LookPath(*binary); err != nil {
+		fmt.Fprintf(os.Stderr, "%q not found in PATH\n", *binary)
+		os.Exit(1)
 	}
 
 	log.Info("starting tfui", "binary", *binary, "workdir", *workdir)
@@ -45,6 +57,14 @@ func main() {
 		fmt.Fprintf(os.Stderr, "error occurred while running program: %v\n", err)
 		os.Exit(1)
 	}
+}
+
+func isTerragruntProject(dir string) bool {
+	if _, err := os.Stat(filepath.Join(dir, "terragrunt.stack.hcl")); err == nil {
+		return true
+	}
+	matches, _ := filepath.Glob(filepath.Join(dir, "*terragrunt*.hcl"))
+	return len(matches) > 0
 }
 
 func setUpLogging() func() {
