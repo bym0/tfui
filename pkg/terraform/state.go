@@ -38,6 +38,11 @@ type StateInstance struct {
 }
 
 func (tr *TerraformRunner) StatePull(ctx context.Context) ([]Resource, error) {
+	if tr.stackMode {
+		// Stack mode manages multiple units with separate state backends;
+		// plan will discover all resources.
+		return nil, nil
+	}
 	cmd := tr.cmdFactory(ctx, tr.binary, "state", "pull")
 	cmd.Dir = tr.workdir
 	cmd.Cancel = func() error {

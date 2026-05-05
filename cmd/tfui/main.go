@@ -37,9 +37,12 @@ func main() {
 			binarySet = true
 		}
 	})
+
+	stackMode := false
 	if !binarySet && isTerragruntProject(*workdir) {
 		*binary = "terragrunt"
-		log.Info("detected terragrunt project, using terragrunt binary")
+		stackMode = isTerragruntStack(*workdir)
+		log.Info("detected terragrunt project", "stack", stackMode)
 	}
 
 	if _, err := exec.LookPath(*binary); err != nil {
@@ -50,6 +53,7 @@ func main() {
 	log.Info("starting tfui", "binary", *binary, "workdir", *workdir)
 
 	runner := terraform.NewTerraformRunner(*workdir, *binary)
+	runner.SetStackMode(stackMode)
 
 	m := ui.NewModel(runner)
 	p := tea.NewProgram(m)
@@ -59,8 +63,13 @@ func main() {
 	}
 }
 
+func isTerragruntStack(dir string) bool {
+	_, err := os.Stat(filepath.Join(dir, "terragrunt.stack.hcl"))
+	return err == nil
+}
+
 func isTerragruntProject(dir string) bool {
-	if _, err := os.Stat(filepath.Join(dir, "terragrunt.stack.hcl")); err == nil {
+	if isTerragruntStack(dir) {
 		return true
 	}
 	matches, _ := filepath.Glob(filepath.Join(dir, "*terragrunt*.hcl"))

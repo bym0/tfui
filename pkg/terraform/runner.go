@@ -17,6 +17,7 @@ type CommandFactory func(ctx context.Context, name string, args ...string) *exec
 type TerraformRunner struct {
 	binary     string
 	workdir    string
+	stackMode  bool
 	cmdFactory CommandFactory
 }
 
@@ -31,12 +32,23 @@ func NewTerraformRunner(workdir string, binary string) *TerraformRunner {
 	}
 }
 
+func (tr *TerraformRunner) SetStackMode(enabled bool) {
+	tr.stackMode = enabled
+}
+
+func (tr *TerraformRunner) stackPrefix(args []string) []string {
+	if !tr.stackMode {
+		return args
+	}
+	return append([]string{"stack", "run"}, args...)
+}
+
 func (tr *TerraformRunner) Plan(ctx context.Context, targets []string) <-chan StreamEvent {
 	args := []string{"plan", "-json"}
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, args)
+	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
 }
 
 func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan StreamEvent {
@@ -44,7 +56,7 @@ func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan S
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, args)
+	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
 }
 
 func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan StreamEvent {
@@ -52,7 +64,7 @@ func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, args)
+	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
 }
 
 func (tr *TerraformRunner) streamJsonEvents(ctx context.Context, args []string) <-chan StreamEvent {
@@ -122,7 +134,8 @@ func (tr *TerraformRunner) streamPerResource(ctx context.Context, command string
 				Resource: &Resource{Address: t},
 			}
 
-			cmd := tr.cmdFactory(ctx, tr.binary, command, t)
+			cmdArgs := tr.stackPrefix([]string{command, t})
+			cmd := tr.cmdFactory(ctx, tr.binary, cmdArgs...)
 			cmd.Dir = tr.workdir
 			output, err := cmd.CombinedOutput()
 
