@@ -40,15 +40,61 @@ func (tr *TerraformRunner) stackPrefix(args []string) []string {
 	if !tr.stackMode {
 		return args
 	}
-	return append([]string{"run-all"}, args...)
+	return append([]string{"stack", "run"}, args...)
 }
 
 func (tr *TerraformRunner) Plan(ctx context.Context, targets []string) <-chan StreamEvent {
+	if tr.stackMode {
+		return tr.stackPlan(ctx, targets)
+	}
 	args := []string{"plan", "-json"}
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
+	return tr.streamJsonEvents(ctx, args)
+}
+
+func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-chan StreamEvent {
+	ch := make(chan StreamEvent)
+
+	go func() {
+		defer close(ch)
+
+		tmpDir, err := os.MkdirTemp("", "tfui-plan-*")
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to create temp dir: %w", err)}
+			return
+		}
+		defer os.RemoveAll(tmpDir)
+
+		args := []string{"stack", "run", "plan", "--json-out-dir", tmpDir}
+		for _, t := range targets {
+			args = append(args, fmt.Sprintf("-target=%s", t))
+		}
+
+		cmd := tr.cmdFactory(ctx, tr.binary, args...)
+		cmd.Dir = tr.workdir
+		cmd.Cancel = func() error {
+			return cmd.Process.Signal(os.Interrupt)
+		}
+
+		if err := cmd.Run(); err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w", err)}
+			return
+		}
+
+		events, err := parsePlanDir(tmpDir)
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to parse plan output: %w", err)}
+			return
+		}
+
+		for _, e := range events {
+			ch <- e
+		}
+	}()
+
+	return ch
 }
 
 func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan StreamEvent {
