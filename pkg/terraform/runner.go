@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync"
 
 	"charm.land/log/v2"
 )
@@ -130,7 +131,10 @@ func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan S
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
+	if tr.stackMode {
+		return tr.stackStreamJsonEvents(ctx, append([]string{"stack", "run"}, args...))
+	}
+	return tr.streamJsonEvents(ctx, args)
 }
 
 func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan StreamEvent {
@@ -138,7 +142,74 @@ func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
 	}
-	return tr.streamJsonEvents(ctx, tr.stackPrefix(args))
+	if tr.stackMode {
+		return tr.stackStreamJsonEvents(ctx, append([]string{"stack", "run"}, args...))
+	}
+	return tr.streamJsonEvents(ctx, args)
+}
+
+func (tr *TerraformRunner) stackStreamJsonEvents(ctx context.Context, args []string) <-chan StreamEvent {
+	ch := make(chan StreamEvent)
+
+	go func() {
+		defer close(ch)
+
+		cmd := tr.cmdFactory(ctx, tr.binary, args...)
+		cmd.Dir = tr.workdir
+		cmd.Cancel = func() error {
+			return cmd.Process.Signal(os.Interrupt)
+		}
+
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to pipe stdout: %w", err)}
+			return
+		}
+
+		stderrPipe, err := cmd.StderrPipe()
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to pipe stderr: %w", err)}
+			return
+		}
+
+		if err := cmd.Start(); err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("command failed to start: %w", err)}
+			return
+		}
+
+		var wg sync.WaitGroup
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			scanner := bufio.NewScanner(stderrPipe)
+			for scanner.Scan() {
+				line := strings.TrimSpace(scanner.Text())
+				if line != "" {
+					ch <- StreamEvent{Message: line}
+				}
+			}
+		}()
+
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 0, MB), MB)
+		for scanner.Scan() {
+			event := ParseLine(scanner.Bytes())
+			if event != nil {
+				ch <- *event
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("scanner error: %w", err)}
+		}
+
+		wg.Wait()
+
+		if err := cmd.Wait(); err != nil {
+			log.Debug("stack command exited with error", "error", err)
+		}
+	}()
+
+	return ch
 }
 
 func (tr *TerraformRunner) streamJsonEvents(ctx context.Context, args []string) <-chan StreamEvent {
