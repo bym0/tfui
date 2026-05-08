@@ -81,6 +81,12 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 			return cmd.Process.Signal(os.Interrupt)
 		}
 
+		stdoutPipe, err := cmd.StdoutPipe()
+		if err != nil {
+			ch <- StreamEvent{Error: fmt.Errorf("failed to pipe stdout: %w", err)}
+			return
+		}
+
 		stderrPipe, err := cmd.StderrPipe()
 		if err != nil {
 			ch <- StreamEvent{Error: fmt.Errorf("failed to pipe stderr: %w", err)}
@@ -92,16 +98,38 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 			return
 		}
 
-		var lastStderr string
+		var mu sync.Mutex
+		var outputLines []string
+		var wg sync.WaitGroup
+
+		appendAndSend := func(line string) {
+			mu.Lock()
+			outputLines = append(outputLines, line)
+			mu.Unlock()
+			ch <- StreamEvent{Message: line}
+		}
+
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s := bufio.NewScanner(stdoutPipe)
+			for s.Scan() {
+				line := strings.TrimSpace(s.Text())
+				if line != "" {
+					appendAndSend(line)
+				}
+			}
+		}()
+
 		scanner := bufio.NewScanner(stderrPipe)
 		for scanner.Scan() {
 			line := strings.TrimSpace(scanner.Text())
 			if line != "" {
-				lastStderr = line
-				ch <- StreamEvent{Message: line}
+				appendAndSend(line)
 			}
 		}
 
+		wg.Wait()
 		cmdErr := cmd.Wait()
 		if cmdErr != nil {
 			log.Debug("terragrunt stack run plan", "exit_error", cmdErr)
@@ -114,7 +142,11 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 		}
 
 		if len(events) == 0 && cmdErr != nil {
-			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w\n%s", cmdErr, lastStderr)}
+			tail := outputLines
+			if len(tail) > 20 {
+				tail = tail[len(tail)-20:]
+			}
+			ch <- StreamEvent{Error: fmt.Errorf("terragrunt stack run plan failed: %w\n%s", cmdErr, strings.Join(tail, "\n"))}
 			return
 		}
 
