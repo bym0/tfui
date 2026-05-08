@@ -59,7 +59,7 @@ func (tr *TerraformRunner) configureStackEnv(cmd *exec.Cmd) {
 		setIfUnset("TF_PLUGIN_CACHE_DIR", cacheDir)
 	}
 
-	setIfUnset("TERRAGRUNT_PARALLELISM", strconv.Itoa(runtime.NumCPU()))
+	setIfUnset("TG_PARALLELISM", strconv.Itoa(runtime.NumCPU()))
 }
 
 func (tr *TerraformRunner) stackPrefix(args []string) []string {
