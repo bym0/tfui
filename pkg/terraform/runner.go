@@ -127,23 +127,31 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 }
 
 func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan StreamEvent {
+	if tr.stackMode {
+		args := []string{"stack", "run", "apply", "--non-interactive", "-json"}
+		for _, t := range targets {
+			args = append(args, fmt.Sprintf("-target=%s", t))
+		}
+		return tr.stackStreamJsonEvents(ctx, args)
+	}
 	args := []string{"apply", "-auto-approve", "-json"}
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
-	}
-	if tr.stackMode {
-		return tr.stackStreamJsonEvents(ctx, append([]string{"stack", "run"}, args...))
 	}
 	return tr.streamJsonEvents(ctx, args)
 }
 
 func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan StreamEvent {
+	if tr.stackMode {
+		args := []string{"stack", "run", "destroy", "--non-interactive", "-json"}
+		for _, t := range targets {
+			args = append(args, fmt.Sprintf("-target=%s", t))
+		}
+		return tr.stackStreamJsonEvents(ctx, args)
+	}
 	args := []string{"destroy", "-auto-approve", "-json"}
 	for _, t := range targets {
 		args = append(args, fmt.Sprintf("-target=%s", t))
-	}
-	if tr.stackMode {
-		return tr.stackStreamJsonEvents(ctx, append([]string{"stack", "run"}, args...))
 	}
 	return tr.streamJsonEvents(ctx, args)
 }
