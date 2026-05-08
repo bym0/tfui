@@ -71,9 +71,6 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 		defer os.RemoveAll(tmpDir)
 
 		args := []string{"stack", "run", "plan", "--json-out-dir", tmpDir}
-		for _, t := range targets {
-			args = append(args, fmt.Sprintf("-target=%s", t))
-		}
 
 		cmd := tr.cmdFactory(ctx, tr.binary, args...)
 		cmd.Dir = tr.workdir
@@ -161,9 +158,6 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan StreamEvent {
 	if tr.stackMode {
 		args := []string{"stack", "run", "apply", "--non-interactive"}
-		for _, t := range targets {
-			args = append(args, fmt.Sprintf("-target=%s", t))
-		}
 		return tr.stackStreamJsonEvents(ctx, args)
 	}
 	args := []string{"apply", "-auto-approve", "-json"}
@@ -176,9 +170,6 @@ func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan S
 func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan StreamEvent {
 	if tr.stackMode {
 		args := []string{"stack", "run", "destroy", "--non-interactive"}
-		for _, t := range targets {
-			args = append(args, fmt.Sprintf("-target=%s", t))
-		}
 		return tr.stackStreamJsonEvents(ctx, args)
 	}
 	args := []string{"destroy", "-auto-approve", "-json"}
