@@ -194,6 +194,57 @@ func TestParseLine_MessagePopulated(t *testing.T) {
 	}
 }
 
+func TestParseTextLine(t *testing.T) {
+	tests := []struct {
+		line    string
+		msgType MessageType
+		addr    string
+	}{
+		{"aws_instance.web: Creating...", MsgTypeApplyStart, "aws_instance.web"},
+		{"aws_instance.web: Modifying... [id=i-123]", MsgTypeApplyStart, "aws_instance.web"},
+		{"aws_instance.web: Destroying... [id=i-123]", MsgTypeApplyStart, "aws_instance.web"},
+		{"aws_instance.web: Reading... [id=i-123]", MsgTypeApplyStart, "aws_instance.web"},
+		{"aws_instance.web: Still creating... [30s elapsed]", MsgTypeApplyProgress, "aws_instance.web"},
+		{"aws_instance.web: Still modifying... [10s elapsed]", MsgTypeApplyProgress, "aws_instance.web"},
+		{"aws_instance.web: Still destroying... [10s elapsed]", MsgTypeApplyProgress, "aws_instance.web"},
+		{"aws_instance.web: Creation complete after 15s [id=i-123]", MsgTypeApplyComplete, "aws_instance.web"},
+		{"aws_instance.web: Modifications complete after 5s [id=i-123]", MsgTypeApplyComplete, "aws_instance.web"},
+		{"aws_instance.web: Destruction complete after 2s", MsgTypeApplyComplete, "aws_instance.web"},
+		{"aws_instance.web: Read complete after 1s [id=i-123]", MsgTypeApplyComplete, "aws_instance.web"},
+		{"aws_instance.web: Refreshing state... [id=i-123]", MsgTypeRefreshStart, "aws_instance.web"},
+		{"module.vpc.aws_subnet.private[0]: Creating...", MsgTypeApplyStart, "module.vpc.aws_subnet.private[0]"},
+		{"data.aws_ami.ubuntu: Reading...", MsgTypeApplyStart, "data.aws_ami.ubuntu"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.line, func(t *testing.T) {
+			event := ParseTextLine(tt.line)
+			require.NotNil(t, event, "expected event for: %s", tt.line)
+			assert.Equal(t, tt.msgType, event.Type)
+			assert.Equal(t, tt.addr, event.Resource.Address)
+		})
+	}
+}
+
+func TestParseTextLine_NonResource(t *testing.T) {
+	lines := []string{
+		"Initializing the backend...",
+		"Initializing provider plugins...",
+		"Terraform has been successfully initialized!",
+		"Plan: 1 to add, 0 to change, 0 to destroy.",
+		"Apply complete! Resources: 1 added, 0 changed, 0 destroyed.",
+		"",
+		"some random log line",
+	}
+
+	for _, line := range lines {
+		t.Run(line, func(t *testing.T) {
+			event := ParseTextLine(line)
+			assert.Nil(t, event, "expected nil for: %s", line)
+		})
+	}
+}
+
 // Helper function to easily compare created event from the input data
 func assertResourceEvent(t *testing.T, event *StreamEvent, addr string, action Action, reason string) {
 	t.Helper()

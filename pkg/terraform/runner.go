@@ -215,7 +215,12 @@ func (tr *TerraformRunner) stackStreamJsonEvents(ctx context.Context, args []str
 			scanner := bufio.NewScanner(stderrPipe)
 			for scanner.Scan() {
 				line := strings.TrimSpace(scanner.Text())
-				if line != "" {
+				if line == "" {
+					continue
+				}
+				if textEvent := ParseTextLine(line); textEvent != nil {
+					ch <- *textEvent
+				} else {
 					ch <- StreamEvent{Message: line}
 				}
 			}
@@ -227,7 +232,15 @@ func (tr *TerraformRunner) stackStreamJsonEvents(ctx context.Context, args []str
 			event := ParseLine(scanner.Bytes())
 			if event != nil {
 				ch <- *event
-			} else if line := strings.TrimSpace(scanner.Text()); line != "" {
+				continue
+			}
+			line := strings.TrimSpace(scanner.Text())
+			if line == "" {
+				continue
+			}
+			if textEvent := ParseTextLine(line); textEvent != nil {
+				ch <- *textEvent
+			} else {
 				ch <- StreamEvent{Message: line}
 			}
 		}

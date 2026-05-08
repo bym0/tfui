@@ -2,6 +2,7 @@ package terraform
 
 import (
 	"encoding/json"
+	"strings"
 
 	"charm.land/log/v2"
 )
@@ -87,4 +88,67 @@ func extractResourceInfo(info *ResourceInfo, action Action, reason string) *Reso
 		Action:          action,
 		Reason:          reason,
 	}
+}
+
+// ParseTextLine extracts resource status from terraform's human-readable output.
+// Patterns: "aws_instance.web: Creating...", "aws_instance.web: Creation complete after 5s [id=i-xxx]"
+func ParseTextLine(line string) *StreamEvent {
+	colonIdx := strings.Index(line, ": ")
+	if colonIdx < 0 {
+		return nil
+	}
+
+	addr := strings.TrimSpace(line[:colonIdx])
+	rest := line[colonIdx+2:]
+
+	if !looksLikeResourceAddr(addr) {
+		return nil
+	}
+
+	var msgType MessageType
+	switch {
+	case strings.HasPrefix(rest, "Refreshing state"):
+		msgType = MsgTypeRefreshStart
+	case strings.HasPrefix(rest, "Creating"),
+		strings.HasPrefix(rest, "Modifying"),
+		strings.HasPrefix(rest, "Destroying"),
+		strings.HasPrefix(rest, "Reading"):
+		if strings.Contains(rest, "complete") {
+			msgType = MsgTypeApplyComplete
+		} else if strings.HasPrefix(rest, "Still") {
+			msgType = MsgTypeApplyProgress
+		} else {
+			msgType = MsgTypeApplyStart
+		}
+	case strings.HasPrefix(rest, "Still creating"),
+		strings.HasPrefix(rest, "Still modifying"),
+		strings.HasPrefix(rest, "Still destroying"),
+		strings.HasPrefix(rest, "Still reading"):
+		msgType = MsgTypeApplyProgress
+	case strings.HasPrefix(rest, "Creation complete"),
+		strings.HasPrefix(rest, "Modifications complete"),
+		strings.HasPrefix(rest, "Destruction complete"),
+		strings.HasPrefix(rest, "Read complete"):
+		msgType = MsgTypeApplyComplete
+	default:
+		return nil
+	}
+
+	return &StreamEvent{
+		Type:     msgType,
+		Resource: &Resource{Address: addr},
+		Message:  line,
+	}
+}
+
+func looksLikeResourceAddr(s string) bool {
+	if !strings.Contains(s, ".") {
+		return false
+	}
+	if strings.ContainsAny(s, " \t/\\") {
+		return false
+	}
+	parts := strings.SplitN(s, ".", 2)
+	first := parts[0]
+	return first == "data" || first == "module" || strings.Contains(first, "_")
 }
