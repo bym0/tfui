@@ -128,7 +128,7 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 
 func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan StreamEvent {
 	if tr.stackMode {
-		args := []string{"stack", "run", "apply", "--non-interactive", "-json"}
+		args := []string{"stack", "run", "apply", "--non-interactive"}
 		for _, t := range targets {
 			args = append(args, fmt.Sprintf("-target=%s", t))
 		}
@@ -143,7 +143,7 @@ func (tr *TerraformRunner) Apply(ctx context.Context, targets []string) <-chan S
 
 func (tr *TerraformRunner) Destroy(ctx context.Context, targets []string) <-chan StreamEvent {
 	if tr.stackMode {
-		args := []string{"stack", "run", "destroy", "--non-interactive", "-json"}
+		args := []string{"stack", "run", "destroy", "--non-interactive"}
 		for _, t := range targets {
 			args = append(args, fmt.Sprintf("-target=%s", t))
 		}
@@ -204,6 +204,8 @@ func (tr *TerraformRunner) stackStreamJsonEvents(ctx context.Context, args []str
 			event := ParseLine(scanner.Bytes())
 			if event != nil {
 				ch <- *event
+			} else if line := strings.TrimSpace(scanner.Text()); line != "" {
+				ch <- StreamEvent{Message: line}
 			}
 		}
 		if err := scanner.Err(); err != nil {

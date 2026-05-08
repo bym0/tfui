@@ -66,6 +66,8 @@ func (m Model) listKeys(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		}
 	case "space":
 		m.toggleSelected()
+	case "a":
+		m.toggleSelectAll()
 	case "tab":
 		if !m.isRunning() && len(m.selected) > 0 {
 			m.actionCursor = 0

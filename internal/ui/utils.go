@@ -24,6 +24,20 @@ func isUnchanged(r *terraform.Resource) bool {
 	return r.Action == terraform.ActionNoop || r.Action == terraform.ActionRead || r.Action == terraform.ActionUncertain
 }
 
+func (m *Model) toggleSelectAll() {
+	if len(m.rows) == 0 {
+		return
+	}
+	if len(m.selected) > 0 {
+		m.selected = make(map[string]bool)
+	} else {
+		m.selected = make(map[string]bool)
+		for _, child := range m.rootItem.Module.Children {
+			m.selected[child.Address()] = true
+		}
+	}
+}
+
 func (m Model) selectedAddresses() []string {
 	addrs := make([]string, 0, len(m.selected))
 	for addr := range m.selected {

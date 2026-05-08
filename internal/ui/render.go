@@ -182,6 +182,7 @@ func (m Model) renderHelpBar() string {
 	hints := []string{
 		renderKeyHint("/", "filter"),
 		renderKeyHint("Space", "select"),
+		renderKeyHint("a", "select all"),
 		renderKeyHint("Enter", "detail"),
 		renderKeyHint("Tab", "action"),
 		renderKeyHint("H", HKeyInfo),
