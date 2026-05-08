@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -37,6 +40,26 @@ func NewTerraformRunner(workdir string, binary string) *TerraformRunner {
 
 func (tr *TerraformRunner) SetStackMode(enabled bool) {
 	tr.stackMode = enabled
+}
+
+func (tr *TerraformRunner) configureStackEnv(cmd *exec.Cmd) {
+	cmd.Env = append(os.Environ(), cmd.Env...)
+
+	setIfUnset := func(key, value string) {
+		if os.Getenv(key) == "" {
+			cmd.Env = append(cmd.Env, key+"="+value)
+			log.Debug("set env for stack command", "key", key, "value", value)
+		}
+	}
+
+	home, err := os.UserHomeDir()
+	if err == nil {
+		cacheDir := filepath.Join(home, ".terraform.d", "plugin-cache")
+		os.MkdirAll(cacheDir, 0o755)
+		setIfUnset("TF_PLUGIN_CACHE_DIR", cacheDir)
+	}
+
+	setIfUnset("TERRAGRUNT_PARALLELISM", strconv.Itoa(runtime.NumCPU()))
 }
 
 func (tr *TerraformRunner) stackPrefix(args []string) []string {
@@ -74,6 +97,7 @@ func (tr *TerraformRunner) stackPlan(ctx context.Context, targets []string) <-ch
 
 		cmd := tr.cmdFactory(ctx, tr.binary, args...)
 		cmd.Dir = tr.workdir
+		tr.configureStackEnv(cmd)
 		cmd.Cancel = func() error {
 			return cmd.Process.Signal(os.Interrupt)
 		}
@@ -187,6 +211,7 @@ func (tr *TerraformRunner) stackStreamJsonEvents(ctx context.Context, args []str
 
 		cmd := tr.cmdFactory(ctx, tr.binary, args...)
 		cmd.Dir = tr.workdir
+		tr.configureStackEnv(cmd)
 		cmd.Cancel = func() error {
 			return cmd.Process.Signal(os.Interrupt)
 		}
@@ -328,6 +353,9 @@ func (tr *TerraformRunner) streamPerResource(ctx context.Context, command string
 			cmdArgs := tr.stackPrefix([]string{command, t})
 			cmd := tr.cmdFactory(ctx, tr.binary, cmdArgs...)
 			cmd.Dir = tr.workdir
+			if tr.stackMode {
+				tr.configureStackEnv(cmd)
+			}
 			output, err := cmd.CombinedOutput()
 
 			if len(output) > 0 {
