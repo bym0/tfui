@@ -1,9 +1,8 @@
 package ui
 
 import (
-	"fmt"
+	"sort"
 	"strings"
-	"time"
 
 	"github.com/SayYoungMan/tfui/pkg/terraform"
 )
@@ -21,18 +20,56 @@ func (m Model) hasError() bool {
 	return m.err != nil
 }
 
-func isUnchanged(r terraform.Resource) bool {
+func isUnchanged(r *terraform.Resource) bool {
 	return r.Action == terraform.ActionNoop || r.Action == terraform.ActionRead || r.Action == terraform.ActionUncertain
 }
 
+func (m Model) selectedAddresses() []string {
+	addrs := make([]string, 0, len(m.selected))
+	for addr := range m.selected {
+		addrs = append(addrs, addr)
+	}
+	sort.Strings(addrs)
+	return addrs
+}
+
+func (m Model) selectedResources() []*terraform.Resource {
+	var resources []*terraform.Resource
+	type stackElem struct {
+		item             *Item
+		ancestorSelected bool
+	}
+
+	stack := []stackElem{{item: m.rootItem, ancestorSelected: false}}
+	for len(stack) > 0 {
+		elem := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		selected := elem.ancestorSelected || m.selected[elem.item.Address()]
+
+		if elem.item.IsResource() {
+			if selected {
+				resources = append(resources, elem.item.Resource)
+			}
+			continue
+		}
+
+		for _, child := range elem.item.Module.Children {
+			stack = append(stack, stackElem{item: child, ancestorSelected: selected})
+		}
+	}
+
+	return resources
+}
+
 // returns if it or ancestor module is selected
-func (m Model) isSelectedOrAncestor(addr string) bool {
-	if m.selected[addr] {
+func (m Model) isSelectedOrAncestor(item *Item) bool {
+	if m.selected[item.Address()] {
 		return true
 	}
 
-	for path := parentModule(addr); path != ""; path = parentModule(path) {
-		if m.selected[path] {
+	for parent := item.Parent; parent != m.rootItem; parent = parent.Parent {
+		if m.selected[parent.Address()] {
 			return true
 		}
 	}
@@ -40,7 +77,7 @@ func (m Model) isSelectedOrAncestor(addr string) bool {
 }
 
 func isAncestor(ancestor string, child string) bool {
-	for parent := parentModule(child); parent != ""; parent = parentModule(parent) {
+	for parent := parentModuleAddr(child); parent != ""; parent = parentModuleAddr(parent) {
 		if parent == ancestor {
 			return true
 		}
@@ -48,7 +85,8 @@ func isAncestor(ancestor string, child string) bool {
 	return false
 }
 
-func parentModule(address string) string {
+// Takes the address and check for last occurring module.x and returns it
+func parentModuleAddr(address string) string {
 	if !strings.HasPrefix(address, "module.") {
 		return ""
 	}
@@ -79,15 +117,14 @@ func parentModule(address string) string {
 }
 
 // return the most direct module from current cursor position
-func (m *Model) currentCursorModule() string {
-	cursorRow := m.rows[m.cursor]
+func (m *Model) currentCursorModule() *Module {
+	cursorItem := m.rows[m.cursor].Item
 
-	currentModule := cursorRow.Address
-	if cursorRow.Kind == rowResource {
-		currentModule = cursorRow.Parent
+	if cursorItem.IsResource() {
+		return cursorItem.Parent.Module
 	}
 
-	return currentModule
+	return cursorItem.Module
 }
 
 func (m *Model) adjustOffset() {
@@ -102,12 +139,4 @@ func (m *Model) adjustOffset() {
 	if m.cursor < m.offset {
 		m.offset = m.cursor
 	}
-}
-
-func (m *Model) formatElapsed(d time.Duration) string {
-	d = d.Truncate(time.Second)
-	if d < time.Minute {
-		return fmt.Sprintf("%ds", int(d.Seconds()))
-	}
-	return fmt.Sprintf("%dm %ds", int(d.Minutes()), int(d.Seconds())%60)
 }

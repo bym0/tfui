@@ -83,8 +83,7 @@ func (m Model) gracefulQuit() (tea.Model, tea.Cmd) {
 
 func (m Model) startRescan() (tea.Model, tea.Cmd) {
 	// initialize
-	m.resources = m.resources[:0]
-	m.resourceIndexMap = make(map[string]int)
+	m.resources = make(map[string]*terraform.Resource)
 	m.rows = m.rows[:0]
 	m.collapsed = make(map[string]bool)
 	m.selected = make(map[string]bool)
@@ -109,15 +108,16 @@ func (m Model) startAction() (tea.Model, tea.Cmd) {
 	ctx, cancel := context.WithCancel(context.Background())
 	m.cancel.fn = cancel
 
-	addrs := m.selectedAddresses()
 	m.outputLines = nil
 	m.workState = workAction
 	m.viewState = viewActionResources
 	m.offset = 0
-
 	m.actionStartTime = time.Now()
-	m.actionResources = make(map[string]*ActionResource, len(addrs))
-	for _, addr := range addrs {
+
+	resources := m.selectedResources()
+	m.actionResources = make(map[string]*ActionResource, len(resources))
+	for _, resource := range resources {
+		addr := resource.Address
 		m.actionResources[addr] = &ActionResource{
 			Address: addr,
 			Status:  actionResourcePending,
@@ -132,6 +132,7 @@ func (m Model) startAction() (tea.Model, tea.Cmd) {
 		"taint":   m.runner.Taint,
 		"untaint": m.runner.Untaint,
 	}
+	addrs := m.selectedAddresses()
 	ch := actionFuncs[action](ctx, addrs)
 	m.eventCh = ch
 
@@ -139,8 +140,7 @@ func (m Model) startAction() (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) openDetail() {
-	addr := m.rows[m.cursor].Address
-	r := m.resources[m.resourceIndexMap[addr]]
+	r := m.rows[m.cursor].Item.Resource
 
 	m.offset = 0
 	m.viewState = viewDetail
